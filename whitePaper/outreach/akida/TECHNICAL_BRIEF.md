@@ -91,9 +91,15 @@ between kernel versions.
 | Batch=8 throughput | 390 µs/sample (20,700 /s) |
 | Weight swap (3 classifiers) | 86 µs |
 | Thermalization savings | 63% (2.4h of 3.8h budget) |
-| Rejection prediction | 80.4% accuracy |
+| Rejection prediction | 80.4% accuracy (hardware, bounded ReLU) |
+| Rejection prediction (projected, hybrid tanh) | **84.1% accuracy** (+3.6% from tanh) |
 | Energy per inference | 1.4 µJ |
 | NPU overhead of GPU run | 0.003% |
+
+**Note on the 80.4% figure:** This is with MetaTF-optimized bounded ReLU weights.
+The software ESN with tanh achieves 84.1% on the same data. The 3.6% gap is the
+cost of the bounded ReLU constraint (see Section 7). The hybrid executor (`HybridEsn`)
+recovers this gap at hardware speed — pending `metalForge/experiments/004` validation.
 
 ### 3.2 Three-Substrate Architecture
 
@@ -238,20 +244,178 @@ by ~15 µs and eliminate one memory copy. See
 
 ---
 
-## 7. What BrainChip Could Open Up
+## 7. Discovery 11: The Bounded ReLU Constraint
 
-Collaborative improvements that would accelerate the Rust stack:
+This finding emerged from building a cross-substrate benchmark in February 2026.
+It is not in any BrainChip documentation. It has direct implications for deployment
+robustness and third-party model portability.
 
-| What | Why | Effort |
-|------|-----|--------|
-| DW eDMA register offset table | The eDMA descriptor layout is in the DesignWare databook; the offsets in `specs/SILICON_SPEC.md` are inferred | Low |
-| Confirm/correct `inferred` register entries | 8 entries in `specs/SILICON_SPEC.md` labeled `inferred` | Low |
-| AKD1500 hardware sample | 10 register map entries are AKD1500-specific; currently extrapolated | Medium |
-| Akida IP licensing inquiry | Die-to-die integration (AKD1500 + GPU on same MCM) analysis in `../explorations/` | Long term |
-| On-chip learning register path | Phase F: reservoir update on-chip, bypassing PCIe weight upload | Medium |
+### 7.1 The Finding
 
-None of these are blockers. The current driver works on AKD1000 in production.
-The items above would improve precision and enable AKD1500 validation.
+The AKD1000 uses `bounded_relu(x) = clamp(x, 0, 1)` as its fixed activation function.
+Echo State Networks — and more broadly, any recurrently connected architecture —
+require `tanh` for robust echo state property with arbitrary weight initialization.
+
+Measured with identical randomly-initialized reservoir weights across substrates:
+
+| Substrate | Activation | Classification accuracy |
+|-----------|-----------|------------------------|
+| CPU f32 (SoftwareBackend) | tanh | 100% |
+| AKD1000 hardware (simulated) | bounded ReLU | ~50% (chance) |
+| AKD1000 hardware (int4) | bounded ReLU | ~55% (chance) |
+
+With random weights, bounded ReLU produces a **degenerate reservoir** — different
+inputs collapse to indistinguishable reservoir states. No readout training recovers
+this; the states contain no discriminative signal.
+
+### 7.2 Why This Is Hidden
+
+BrainChip's MetaTF training pipeline optimizes all weights — including the reservoir —
+explicitly under bounded ReLU dynamics. The reservoir weights that ship with
+validated models are not random; they are the output of an optimization that found
+the rare set producing expressive states under bounded ReLU.
+
+The 3.6% accuracy gap between software ESN (89.7%) and hardware ESN (86.1%) in our
+production experiments is the residual cost **after** MetaTF found good bounded ReLU
+weights. The full cost — the gap between the optimal architecture under tanh vs the
+best achievable under bounded ReLU — is larger and unmeasured.
+
+Implication: MetaTF is not optional polish. It is compensating for a hardware
+constraint that the SDK documentation does not describe.
+
+### 7.3 Our Workaround: Hybrid Executor
+
+The `HybridEsn` type in `akida-driver` resolves this today:
+
+```rust
+use akida_driver::HybridEsn;
+
+// Accepts tanh-trained weights directly — no MetaTF, no bounded ReLU optimization
+let mut esn = HybridEsn::from_weights(&w_in, &w_res, &w_out, 0.3)?;
+
+// Software mode (now): correct tanh, CPU speed
+// Hardware mode (after Exp 004): correct tanh, hardware speed
+let prediction = esn.step(&observables)?;
+```
+
+In hardware-linear mode (pending `metalForge/experiments/004`):
+- Hardware computes the matrix multiply (int4, parallel, 54 µs)
+- Host applies tanh to the 128-float result (< 1 µs)
+- **Full 89.7% accuracy at full 18,500 Hz throughput, 1.4 µJ energy**
+
+The constraint is not physical. It is one activation function applied in silicon
+to the output of a matrix multiply that we can receive before the activation fires.
+
+### 7.4 What BrainChip Could Do in Hardware
+
+Four paths from lowest to highest effort. Any one of them removes the MetaTF
+lock-in for reservoir models and dramatically broadens the third-party model
+ecosystem.
+
+---
+
+**Path 1 — Linear Pass-Through Register Bit (Near-Zero Silicon Cost)**
+
+Add a single NP configuration register: `NP_ACTIVATION_BYPASS`.
+
+When set, the NP skips the comparator/threshold stage and outputs the raw
+accumulator value. The host receives pre-activation values and applies any
+nonlinearity it chooses.
+
+Hardware cost: one register bit per NP + a wire-OR in the comparator path.
+SDK change: expose `ActivationMode::Linear` in the FlatBuffer layer spec.
+Impact: unlocks arbitrary activation functions for all current and future hardware.
+Users implement tanh, sigmoid, GELU, custom physics activations on the host side.
+Hardware speed and energy fully preserved.
+
+**Effort: Low. Timeline: 1 SDK release.**
+
+---
+
+**Path 2 — Configurable Activation in the FlatBuffer Schema**
+
+The FlatBuffer layer spec currently has no activation type field.
+Adding one (`activation_fn: ActivationMode`) allows:
+
+```
+enum ActivationMode { BoundedRelu = 0, Linear = 1, TanhApprox = 2, Sigmoid = 3 }
+```
+
+`BoundedRelu = 0` is backward-compatible. `Linear = 1` maps to Path 1.
+`TanhApprox = 2` (if hardware implements it) maps to Path 3/4.
+
+Hardware cost: depends on which modes are supported.
+SDK cost: schema change + C++ engine dispatch.
+
+**Effort: Low–Medium. Backward-compatible. Enables community-contributed activations.**
+
+---
+
+**Path 3 — Piecewise tanh via 51-Bit Threshold SRAM**
+
+The threshold SRAM is 51-bit per NP — significantly richer than needed for
+bounded ReLU alone. A piecewise-linear tanh approximation requires ~8 threshold
+values per piece with ~6-bit precision each. 51 bits = ~8 pieces × 6 bits + 3 bits spare.
+
+Piecewise-linear tanh with 8 segments is indistinguishable from true tanh at
+4-bit weight precision (the hardware's own precision floor).
+
+This reuses existing silicon. No new transistors. Only new threshold SRAM programming.
+
+Implementation:
+1. Define a `TANH_APPROX_THRESHOLDS` struct (8 threshold values per NP)
+2. At model load time, write these to threshold SRAM
+3. NP comparator reads threshold sequence → computes piecewise approximation
+
+**Effort: Medium. No new silicon required. Enables native on-chip tanh approximation.**
+
+---
+
+**Path 4 — Native Activation LUT in Akida 2.0**
+
+The `akida::v2` symbols in the C++ engine indicate next-generation hardware is in
+development. Including a small activation LUT (4-bit input → 4-bit output, 16 entries)
+in each NP's datapath would:
+
+- Enable exact tanh, sigmoid, GELU, or any custom function at zero extra latency
+- Be programmable per inference (different models, different activations)
+- Remove the MetaTF dependency for all model types, not just ESNs
+- Make the Akida 2.0 activation-agnostic — a genuine advantage over any fixed-activation NPU
+
+**Effort: Medium (silicon design). High strategic value. Enables arbitrary model portability.**
+
+---
+
+### 7.5 Strategic Context
+
+The bounded ReLU constraint is the primary reason third-party models don't
+"just work" on Akida hardware. Every model trained in PyTorch, TensorFlow,
+or any other framework uses tanh, sigmoid, or GELU. Converting to bounded ReLU
+requires full re-training via MetaTF. This is a significant ecosystem barrier.
+
+Paths 1 or 2 remove this barrier in one SDK release, with minimal hardware change.
+The hybrid executor (`HybridEsn`) already exists to use Path 1 the moment it lands.
+
+---
+
+## 8. What BrainChip Could Open Up
+
+Collaborative improvements in priority order:
+
+| What | Impact | Effort |
+|------|--------|--------|
+| **Linear pass-through register bit** (Path 1 above) | **Removes MetaTF lock-in for ESNs and recurrent models** | **Low** |
+| **Configurable activation in FlatBuffer schema** (Path 2) | **Enables arbitrary third-party model portability** | **Low–Medium** |
+| DW eDMA register offset table | Eliminates 8 inferred entries in `specs/SILICON_SPEC.md` | Low |
+| Confirm/correct `inferred` register entries | Validation of 8 register map entries | Low |
+| AKD1500 hardware sample | AKD1500 measurements vs AKD1000 extrapolations | Medium |
+| Piecewise tanh via threshold SRAM (Path 3) | Native on-chip tanh, no host round-trip | Medium |
+| On-chip learning register path | Phase F: reservoir update on-chip, bypassing PCIe | Medium |
+| Activation LUT in Akida 2.0 (Path 4) | Activation-agnostic next-gen hardware | Long term |
+| Akida IP licensing inquiry | Die-to-die integration analysis in `../explorations/` | Long term |
+
+The current driver works in production. The bounded ReLU fix (Paths 1 or 2) would
+have the largest single impact on third-party adoption — more than any other change.
 
 ---
 

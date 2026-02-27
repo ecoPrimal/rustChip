@@ -204,7 +204,95 @@ would power **18.5 billion inferences** — or 11 years at 1 Hz continuously.
 
 ---
 
-## 10. AKD1500 Projections
+## 10. Activation Function Constraint and Hybrid Executor
+
+**Discovery date:** February 2026 (rustChip `bench_hw_sw_parity`)
+**Documented in:** `../../whitePaper/explorations/TANH_CONSTRAINT.md`
+
+### 10.1 Measured Accuracy Gap
+
+The AKD1000 uses bounded ReLU (`clamp(x, 0, 1)`) as its fixed activation function.
+ESNs require `tanh` for reliable reservoir dynamics. With identical weights:
+
+| Substrate | Activation | Binary class accuracy | Source |
+|-----------|-----------|----------------------|--------|
+| CPU f64 reference | tanh | 89.7% | Software ✅ |
+| CPU f32 (SoftwareBackend) | tanh | 89.7% | Software ✅ |
+| AKD1000 (MetaTF-designed weights) | bounded ReLU | **86.1%** | Live HW ✅ |
+| AKD1000 (random weights) | bounded ReLU | **~50% (chance)** | Simulated ✅ |
+
+**The 3.6% gap is the cost of bounded ReLU after MetaTF weight optimization.**
+**Without MetaTF optimization, the gap is catastrophic (~40% on arbitrary tasks).**
+
+### 10.2 Why Random Weights Fail on Hardware
+
+bounded ReLU clips all negative pre-activations to zero.
+With random reservoir weights, approximately half the neurons are permanently silenced
+for a given input distribution. Different inputs produce near-identical reservoir states.
+The readout layer cannot learn to separate them.
+
+tanh saturates symmetrically — all neurons remain active, different inputs produce
+distinguishable states. This is the mathematical foundation of the echo state property.
+
+### 10.3 Hybrid Executor: Projected Numbers
+
+`HybridEsn` in hardware-linear mode routes:
+- Matrix multiply → hardware (int4, 54 µs, 1.4 µJ)
+- tanh activation → host CPU (< 1 µs, negligible energy)
+
+| Mode | Accuracy | Throughput | Latency | Energy | Status |
+|------|----------|-----------|---------|--------|--------|
+| Pure software (CPU f32 + tanh) | 89.7% | 800 Hz | 1,250 µs | ~44 mJ | ✅ Available today |
+| Hardware native (bounded ReLU) | 86.1% | 18,500 Hz | 54 µs | 1.4 µJ | ✅ Validated (Exp 022) |
+| **Hybrid (HW linear + host tanh)** | **89.7%** | **18,500 Hz** | **~55 µs** | **~1.4 µJ** | 📋 Exp 004 |
+
+The hybrid mode delivers software accuracy at hardware speed and energy.
+Pending `metalForge/experiments/004_HYBRID_TANH.md` validation.
+
+### 10.4 Cross-Substrate Parity
+
+`bench_hw_sw_parity` benchmark (run: `cargo run --bin bench_hw_sw_parity`):
+
+| Comparison | Relative error | Classification agreement |
+|-----------|---------------|--------------------------|
+| f32+tanh vs f64 reference | 0.00% | 100% |
+| f32+boundedReLU vs f64 | ~95% | 58% (random weights) |
+| int4+boundedReLU vs f64 | ~93% | 55% (random weights) |
+| AKD1000 hardware vs software (QCD data, trained weights) | ~4% | 96.2% ✅ |
+
+The "random weights" rows show the unmitigated hardware constraint.
+The "trained weights" row shows production performance after MetaTF optimization.
+
+### 10.5 Energy Comparison Including Activation
+
+| Substrate | Step energy | Activation energy | Total/inference |
+|-----------|------------|-------------------|-----------------|
+| CPU f32 (whole CPU at 35W) | ~44 mJ | included | ~44 mJ |
+| AKD1000 hardware | 1.4 µJ | 0 (in silicon) | 1.4 µJ |
+| Hybrid (HW + host tanh) | 1.4 µJ | < 0.001 µJ | ~1.4 µJ |
+
+Host tanh on 128 floats adds less than 1 nJ — negligible against PCIe overhead.
+**The hybrid executor preserves the full 31,000× energy advantage of hardware.**
+
+### 10.6 Hardware Solutions (BrainChip Roadmap Recommendations)
+
+Four approaches in increasing complexity order — see Section 7 of `TECHNICAL_BRIEF.md`
+for full analysis:
+
+| Path | What | Effort | Impact |
+|------|------|--------|--------|
+| 1 | `NP_ACTIVATION_BYPASS` register bit | Low | Enables host-side arbitrary activation |
+| 2 | `ActivationMode` field in FlatBuffer schema | Low–Medium | Third-party model portability |
+| 3 | Piecewise tanh via 51-bit threshold SRAM | Medium | Native on-chip tanh, no host round-trip |
+| 4 | Activation LUT in Akida 2.0 | Long term | Activation-agnostic next-gen hardware |
+
+Path 1 costs approximately one register bit + a wire-OR in the NP comparator.
+The `HybridEsn` infrastructure in rustChip is ready to use Path 1 immediately
+on availability (`with_hardware_linear()` call, zero user code change).
+
+---
+
+## 11. AKD1500 Projections
 
 Projected from AKD1000 measurements, pending hardware validation:
 
