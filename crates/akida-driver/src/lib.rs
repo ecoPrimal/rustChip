@@ -59,6 +59,7 @@ mod capabilities;
 mod device;
 mod discovery;
 mod error;
+pub mod hybrid;
 mod inference;
 mod io;
 mod loading;
@@ -85,6 +86,7 @@ pub use capabilities::{
 pub use device::{AkidaDevice, DeviceHandle};
 pub use discovery::{DeviceInfo, DeviceManager};
 pub use error::{AkidaError, Result};
+pub use hybrid::{EsnSubstrate, EsnWeights, HybridEsn, SubstrateInfo, SubstrateMode, SubstrateSelector};
 pub use inference::{InferenceConfig, InferenceExecutor, InferenceResult};
 pub use loading::{LoadConfig, LoadMetrics, ModelLoader, ModelProgram, NpuConfig};
 pub use vfio::VfioBackend;
@@ -92,7 +94,8 @@ pub use vfio::VfioBackend;
 /// Commonly used types.
 pub mod prelude {
     pub use crate::{
-        AkidaDevice, AkidaError, Capabilities, DeviceManager, InferenceConfig, InferenceExecutor,
-        InferenceResult, LoadConfig, ModelLoader, ModelProgram, NpuConfig, Result, VfioBackend,
+        AkidaDevice, AkidaError, Capabilities, DeviceManager, EsnSubstrate, EsnWeights,
+        HybridEsn, InferenceConfig, InferenceExecutor, InferenceResult, LoadConfig, ModelLoader,
+        ModelProgram, NpuConfig, Result, SubstrateMode, SubstrateSelector, VfioBackend,
     };
 }
