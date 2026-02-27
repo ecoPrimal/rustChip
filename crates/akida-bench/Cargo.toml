@@ -1,0 +1,61 @@
+[package]
+name        = "akida-bench"
+description = "Benchmark suite — reproduces all 10 BEYOND_SDK hardware discoveries"
+keywords    = ["akida", "benchmark", "neuromorphic", "pcie", "dma"]
+categories  = ["hardware-support", "science"]
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+authors.workspace    = true
+
+[dependencies]
+akida-driver = { workspace = true }
+akida-chip   = { workspace = true }
+anyhow       = { workspace = true }
+tracing      = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+# ── discovery benchmarks (one per BEYOND_SDK discovery) ──────────────────────
+[[bin]]
+name = "enumerate"
+path = "src/bin/enumerate.rs"
+
+[[bin]]
+name = "bench_channels"     # Discovery 1: any channel count works
+path = "src/bin/bench_channels.rs"
+
+[[bin]]
+name = "bench_fc_depth"     # Discovery 2: FC chains merge to single HW pass
+path = "src/bin/bench_fc_depth.rs"
+
+[[bin]]
+name = "bench_batch"        # Discovery 3: batch=8 sweet spot (2.4× speedup)
+path = "src/bin/bench_batch.rs"
+
+[[bin]]
+name = "bench_clock_modes"  # Discovery 4: Economy = 19% slower, 18% less power
+path = "src/bin/bench_clock_modes.rs"
+
+[[bin]]
+name = "bench_fc_width"     # Discovery 5: PCIe-dominated below 512 neurons
+path = "src/bin/bench_fc_width.rs"
+
+[[bin]]
+name = "bench_weight_mut"   # Discovery 6: weight mutation without reprogram (~14ms)
+path = "src/bin/bench_weight_mut.rs"
+
+[[bin]]
+name = "bench_dma"          # Discovery 9 / Production: 37 MB/s sustained DMA
+path = "src/bin/bench_dma.rs"
+
+[[bin]]
+name = "bench_latency"      # Production: 54 µs / 18,500 Hz single inference
+path = "src/bin/bench_latency.rs"
+
+[[bin]]
+name = "bench_bar"          # Discovery 8: BAR1 16 GB address space probe
+path = "src/bin/bench_bar.rs"

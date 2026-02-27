@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
+ * DEPRECATED — see DEPRECATED.md
+ *
+ * This file is the original BrainChip C PCIe driver, preserved for reference.
+ * All active development has moved to the pure Rust stack in rust/ (crates/).
+ * The Rust VFIO backend replaces this module without requiring kernel headers,
+ * gcc, or per-kernel rebuilds.
+ *
  * Copyright (c) 2022 Brainchip.
  * Akida PCIe driver
  *

@@ -1,81 +1,163 @@
-# Akida PCIe driver
-## Installing driver
-Prerequisite: having gcc & build tools available, and kernel headers available
+# rustChip
 
-On Ubuntu:
-```
-sudo apt install build-essential linux-headers-$(uname -r)
-```
+Pure Rust software stack for BrainChip Akida neuromorphic processors (AKD1000, AKD1500).
 
-Then simply run the install script from current directory.
-```
-./install.sh
-```
-It will build the driver, remove old installed driver versions if any,
-and load the new one.
-It will also configure modules to load it at every boot, and give read/write
-access on `/dev/akida*` to __every__ user.
+Forked from [Brainchip-Inc/akida_dw_edma](https://github.com/Brainchip-Inc/akida_dw_edma).
+C kernel module → deprecated (see [DEPRECATED.md](DEPRECATED.md)).
+All active development is in `rust/` and these top-level crates.
 
-If you want to control permissions, edit the udev rules with your own
-preferences in `99-akida-pcie.rules`
+No Python. No C++ SDK. No MetaTF. No kernel module required.
 
-If you don't want the driver to load on every boot, edit the `/etc/modules`
-file after installation and remove `akida_pcie` line.
+---
 
-***After a kernel update you need to run the install script again.***
+## What this is
 
-## Enable CMA in the kernel
+A fruiting body from the [ecoPrimals](https://github.com/ecoPrimals) project —
+self-contained, carries everything it needs to replicate, designed to be handed
+to the BrainChip engineering team as a standalone working system.
 
-Some systems, e.g.: Ubuntu on x86_64, do not come with CMA (contiguous memory
-allocation) support enabled in the kernel. This is required to use AKD1500
-devices through PCIe if you want to use larger amounts of memory to program big
-models or make full usage of the pipeline. To build the kernel packages that
-include such support you can run the dedicated script, tailored for the Ubuntu
-distribution:
+It emerged from `toadStool`, the shared compute library behind five scientific
+validation suites (lattice QCD, microbial ecology, atmospheric physics, neural
+architectures, uncertainty quantification). The AKD1000 was used in production
+physics simulation — 5,978 live hardware calls, 24 hours, lattice SU(3).
+This is the distillation of what we learned.
+
+---
+
+## Workspace
 
 ```
-./build_kernel_w_cma.sh
+rustChip/
+├── crates/
+│   ├── akida-chip/      silicon model — register map, NP mesh, BAR layout (no deps)
+│   ├── akida-driver/    full driver — VFIO primary, kernel fallback, DMA, inference
+│   ├── akida-models/    FlatBuffer model parser + program_external() injection
+│   ├── akida-bench/     benchmark suite — reproduces all 10 BEYOND_SDK discoveries
+│   └── akida-cli/       `akida` command-line tool
+├── docs/
+│   ├── BEYOND_SDK.md    10 hardware discoveries overturning SDK assumptions
+│   ├── HARDWARE.md      NP mesh architecture, BAR layout, register map deep-dive
+│   ├── TECHNICAL_BRIEF.md  production use in lattice QCD (Exp 022)
+│   └── BENCHMARK_DATASHEET.md  full measurement dataset
+├── BEYOND_SDK.md        (also at root — the most important document)
+└── DEPRECATED.md        why the C code at root is no longer the primary path
 ```
 
-> Note: this command might take long time because parallel build is not set by default. To enable that you can export this environment variable before launching the build to use a number of jobs equivalent to the number of available cores:
->
-> `export MAKEFLAGS="-j $(nproc)"`
+---
 
+## Build
 
-The script will create the packages and explain how to install and boot on the
-new kernel.
+```sh
+# Prerequisites: Rust stable, hardware connected
+cd rustChip/
+cargo build --release
 
-Note that this will not prevent the upgrade and install of new kernel versions
-on your system. If you want to do that on Ubuntu, you can run:
+# List devices
+cargo run --bin akida -- enumerate
 
-```
-sudo apt-mark hold `uname -r`
-```
-
-Note that this will prevent security updates on current kernels, and that might
-not be safe in some environments.
-If you want to go back to an old kernel that does not contain the CMA feature,
-you can grep the installed kernels that were configured in grub:
-
-```
-sudo grub-mkconfig | grep -iE "menuentry 'Ubuntu, with Linux" | awk '{print i++ " : "$1, $2, $3, $4, $5, $6, $7}'
-```
-
-This will print a list of options prefixed by a number. If you want to select
-for example the item 2, modify the `/etc/default/grub` file from:
-`GRUB_DEFAULT=0` to: `GRUB_DEFAULT="1>2"`.
-
-Once done, you will need to invoke `update-grub` and reboot:
-
-```
-sudo update-grub
-sudo reboot
+# Full benchmark suite (reproduces BEYOND_SDK.md)
+cargo run --bin bench_dma
+cargo run --bin bench_latency
+cargo run --bin bench_batch
+cargo run --bin bench_clock_modes
+cargo run --bin bench_fc_width
+cargo run --bin bench_fc_depth
+cargo run --bin bench_channels
+cargo run --bin bench_weight_mut
+cargo run --bin bench_bar
 ```
 
-Source: https://askubuntu.com/questions/82140/how-can-i-boot-with-an-older-kernel-version
+---
 
+## Backend selection
 
-## Support
-Please visit:
-- https://doc.brainchipinc.com/ for akida documentation, examples and tutorials
-- https://brainchipinc.com/support/ for support requests
+```text
+Primary — VFIO (no kernel module):
+  akida bind-vfio 0000:a1:00.0      # once, requires root/CAP_SYS_ADMIN
+  cargo run --bin akida enumerate    # no root needed after binding
+
+Fallback — C kernel module (if installed):
+  sudo insmod akida-pcie.ko          # existing module
+  cargo run --bin akida enumerate    # Rust driver opens /dev/akida*
+```
+
+The VFIO backend provides full DMA, IOMMU isolation, and works on any
+kernel version. The kernel fallback is available when the C module is loaded.
+
+---
+
+## Measured results (AKD1000, PCIe x1 Gen2, Feb 2026)
+
+| Metric | Measured |
+|--------|----------|
+| DMA throughput, sustained | 37 MB/s |
+| Single inference | 54 µs / 18,500 Hz |
+| Batch=8 inference | 390 µs/sample / 20,700 /s |
+| Energy per inference | 1.4 µJ |
+| Online weight swap (3 models) | 86 µs |
+| Production calls (Exp 022, 24 h lattice QCD) | 5,978 |
+
+---
+
+## The 10 hardware discoveries
+
+Full details in [`BEYOND_SDK.md`](BEYOND_SDK.md).
+
+| # | SDK claim | Actual hardware |
+|---|-----------|-----------------|
+| 1 | InputConv: 1 or 3 channels only | Any channel count (1–64 tested) |
+| 2 | FC layers run independently | All FC layers merge via SkipDMA (single HW pass) |
+| 3 | Batch=1 only | Batch=8 amortises PCIe: 948→390 µs/sample (2.4×) |
+| 4 | One clock mode | 3 modes: Performance / Economy / LowPower |
+| 5 | Max FC width ~hundreds | Tested to 8192+ neurons (SRAM-limited only) |
+| 6 | Weight updates require reprogram | `set_variable()` updates live (~14 ms overhead) |
+| 7 | "30 mW" chip power | Board floor 900 mW; chip compute below noise floor |
+| 8 | 8 MB SRAM limit | BAR1 exposes 16 GB address space |
+| 9 | Program binary is opaque | FlatBuffer: `program_info` + `program_data`; weights via DMA |
+| 10 | Simple inference engine | C++ engine: SkipDMA, 51-bit threshold SRAM, `program_external()` |
+
+---
+
+## Driver roadmap
+
+```
+Phase A: Python SDK → Rust FFI wrapper          ✅ done
+Phase B: C++ Engine → Rust FFI to libakida.so   ✅ done
+Phase C: Direct ioctl/mmap on /dev/akida0        ✅ done  (Feb 26, 2026)
+Phase D: Pure Rust VFIO driver (this repo)       ✅ in progress
+Phase E: Rust akida_pcie kernel module           queued
+```
+
+Phase D (VFIO) is the primary path in this repository. Phase E (Rust kernel module)
+would use the stable kernel Rust bindings to permanently replace `akida-pcie-core.c`
+without the kernel version ceiling.
+
+---
+
+## AKD1500 compatibility
+
+All BEYOND_SDK findings transfer directly to AKD1500 (same Akida 1.0 IP).
+One constant changes in `akida-chip/src/pcie.rs`: `AKD1500 = 0xA500`.
+
+AKD1500 adds: PCIe x2 Gen2 (2× bandwidth), SPI master/slave, hardware SLEEP pin,
+7×7 mm BGA169, 24 GPIO. The VFIO driver handles all of these without code changes
+(PCIe x2 is transparent to software; SPI/GPIO use different interfaces).
+
+---
+
+## Scientific context
+
+rustChip emerged from using the AKD1000 as a neuromorphic coprocessor in lattice
+QCD simulations. The chip ran Echo State Network inference to steer HMC sampling
+— 5,978 live calls over 24 hours, achieving 63% thermalization savings and 80.4%
+rejection prediction accuracy on a 32⁴ SU(3) lattice.
+
+That work lives at [syntheticChemistry/hotSpring](https://github.com/syntheticChemistry/hotSpring).
+The full technical writeup is in [`docs/TECHNICAL_BRIEF.md`](docs/TECHNICAL_BRIEF.md).
+
+---
+
+## License
+
+AGPL-3.0-or-later.
+The original C kernel module files at the repository root are GPL-2.0 (BrainChip Inc.).
