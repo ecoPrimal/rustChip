@@ -183,20 +183,36 @@ cargo run --bin validate_all              # hardware mode (requires /dev/akida0)
 
 ## Related repositories
 
+**Public:**
+
 - [syntheticChemistry/hotSpring](https://github.com/syntheticChemistry/hotSpring) —
   Lattice QCD physics simulation using AKD1000 as ESN coprocessor.
   Source of the 5,978 production inference calls and the original discovery that
   the chip is more capable than the SDK reveals.
 
-- [syntheticChemistry/toadStool](https://github.com/syntheticChemistry/toadStool) —
-  Heterogeneous compute dispatch library (GPU + NPU + CPU).
-  rustChip provides the `EsnSubstrate` trait and `SubstrateSelector` that toadStool
-  uses for NPU-aware scheduling. The `HybridEsn` API is designed as a drop-in
-  replacement for toadStool's current CPU ESN path.
+- [syntheticChemistry/wetSpring](https://github.com/syntheticChemistry/wetSpring) —
+  Microbial ecology and biosystems simulation suite. Second scientific validation
+  target for the AKD1000 NPU backend.
+
+The springs are academic research projects and are publicly available.
+
+**Pre-publication (AGPL-3.0, releasing in time):**
+
+rustChip is part of the broader [ecoPrimals](https://github.com/ecoPrimal)
+project — a collection of heterogeneous compute libraries and scientific
+simulation frameworks. The remainder of the ecoPrimals stack (including the
+compute dispatch and substrate scheduling systems that `EsnSubstrate` /
+`SubstrateSelector` are designed to slot into) is not yet public.
+
+Pre-publication access to ecoPrimals requires one-on-one interaction and
+demonstrated good-faith commitment to open systems. If that describes you,
+get in touch.
 
 ---
 
 ## Contact
 
+ecoPrimal@pm.me
+
 [ecoPrimal](https://github.com/ecoPrimal) — open source, AGPL-3.0.
-All issues, questions, and corrections welcome on the repository.
+Issues, questions, and corrections welcome on the repository.
