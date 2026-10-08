@@ -3,7 +3,7 @@
 **Date:** April 30, 2026
 **License:** AGPL-3.0-or-later (scyBorg triple)
 **MSRV:** Rust 2024 edition
-**Status:** 367 tests passing | 28-model zoo | 5 crates | pure Rust conversion pipeline | guideStone validated | Phase D sovereign driver | glowplug VFIO lifecycle | HW/SW backends | 5 science demos | CI enabled
+**Status:** 367 tests passing | 28-model zoo | 5 crates | pure Rust conversion pipeline | guideStone validated | Phase D sovereign driver | glowplug VFIO lifecycle | HW/SW backends | 5 science demos | CI enabled | **membrane immunity gate exploration active**
 
 No Python. No C++ SDK. No MetaTF. No kernel module required.
 
@@ -123,7 +123,8 @@ rustChip/
 │   │   ├── WHY_NPU.md          the neuromorphic argument grounded in hardware evidence
 │   │   ├── SPRINGS_ON_SILICON.md  5 NPU patterns × 3 science domains
 │   │   ├── NPU_FRONTIERS.md    10 creative frontiers for neuromorphic hardware
-│   │   └── NPU_ON_GPU_DIE.md   NPU as a GPU functional unit — area/power analysis
+│   │   ├── NPU_ON_GPU_DIE.md   NPU as a GPU functional unit — area/power analysis
+│   │   └── MEMBRANE_IMMUNITY_GATE.md  NPU as hardware-level adaptive immune gate (NEW)
 │   └── outreach/akida/         material for BrainChip engineering team
 │       ├── TECHNICAL_BRIEF.md  10 discoveries + production use + novel systems
 │       ├── BENCHMARK_DATASHEET.md  full measurement dataset
@@ -446,5 +447,12 @@ the stack across physics, agriculture, biology, and health.
 - [hotSpring](https://github.com/syntheticChemistry/hotSpring) — lattice QCD, the original Akida deployment (5,978 live calls)
 - [airSpring](https://github.com/syntheticChemistry/airSpring) — agricultural ESN streaming on NPU
 - [wetSpring](https://github.com/syntheticChemistry/wetSpring) — sentinel microbe inference
+
+**Defense that will exercise this hardware (active exploration):**
+
+- **Membrane immunity gate** — BingoCube evolutionary reservoir on AKD1500 for
+  hardware-level HTTP traffic classification. Feeds into MazeCube scatter defense
+  and BackPressure non-Newtonian dynamics. See [`whitePaper/explorations/MEMBRANE_IMMUNITY_GATE.md`](whitePaper/explorations/MEMBRANE_IMMUNITY_GATE.md).
+  Part of the [toadStool](https://github.com/ecoPrimals/toadStool) deiisle engine.
 
 All scyBorg-licensed. All public. All sovereign.

@@ -8,6 +8,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Membrane Immunity Gate exploration** — new exploration document
+  (`whitePaper/explorations/MEMBRANE_IMMUNITY_GATE.md`) proposing AKD1500 as
+  a hardware-level HTTP traffic classifier for the ecoPrimals membrane defense.
+  BingoCube evolutionary reservoirs classify fleet vs human traffic at ~54 µs
+  per request, feeding into MazeCube's pressure dimension. First neuromorphic
+  IDS architecture with on-chip adaptive evolution (Nautilus shell). Connects
+  to biomeGate brain architecture (hotSpring) and toadStool deiisle engine.
+  Reactivation of rustChip as the NPU substrate for membrane defense alongside
+  its existing physics workload role.
+
 - **glowplug absorption** — VFIO device lifecycle management (bind, warm boot,
   tear down) absorbed from coralReef's ember/glowplug. rustChip now manages its
   own hardware lifecycle without external orchestrator or kernel module. Code is
