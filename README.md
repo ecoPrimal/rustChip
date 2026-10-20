@@ -1,9 +1,9 @@
 # rustChip — Pure Rust Neuromorphic Inference
 
-**Date:** April 30, 2026
+**Date:** October 20, 2026
 **License:** AGPL-3.0-or-later (scyBorg triple)
 **MSRV:** Rust 2024 edition
-**Status:** 367 tests passing | 28-model zoo | 5 crates | pure Rust conversion pipeline | guideStone validated | Phase D sovereign driver | glowplug VFIO lifecycle | HW/SW backends | 5 science demos | CI enabled | **membrane immunity gate exploration active**
+**Status:** 376 tests passing | 28-model zoo | 5 crates | AKD1000/AKD1500/AKD2500/Pico chip models | pure Rust conversion pipeline | guideStone validated | Phase D sovereign driver | glowplug VFIO lifecycle | HW/SW backends | 5 science demos | CI enabled | **membrane immunity gate exploration active**
 
 No Python. No C++ SDK. No MetaTF. No kernel module required.
 
@@ -150,7 +150,7 @@ rustChip/
 ```bash
 cd rustChip/
 
-# First: verify everything works (337 tests, ~2 seconds)
+# First: verify everything works (376 tests, ~2 seconds)
 cargo test --workspace
 
 # Build release
@@ -356,10 +356,22 @@ Phase E: Rust akida_pcie kernel module           🔲 queued
 
 ---
 
-## AKD1500 compatibility
+## Chip family support (Oct 2026)
 
-All BEYOND_SDK findings transfer directly to AKD1500 (same Akida 1.0 IP).
-One constant changes in `akida-chip/src/pcie.rs`: `AKD1500 = 0xA500`.
+| Chip | Generation | Process | Status | In `akida-chip` | Driver support |
+|------|-----------|---------|--------|-----------------|----------------|
+| **AKD1000** | Akida 1.0 | — | Production ✅ | Full silicon model | Full (VFIO + kernel) |
+| **AKD1500** | Akida 1.0 | — | Production ✅ | Full silicon model | Full (same IP) |
+| **AKD2500** | Akida 2.0 | TSMC 12nm | MPW tape-out Dec 2026 | Placeholder (pre-silicon) | Ready to extend |
+| **Akida Pico** | Pico | 22nm | IP available | Capability model | Not PCIe — needs AXI/SPI path |
+
+AKD2500 device ID is a placeholder (`0xA250`) — update when silicon ships.
+Akida Pico is not a PCIe device; driver support would use AXI/SPI interfaces.
+All BEYOND_SDK findings from AKD1000 transfer directly to AKD1500 (same Akida 1.0 IP).
+
+**New in `ChipVariant`:** `Akd2500`, `Pico` variants. `AkidaGeneration` enum (`V1`/`V2`/`Pico`).
+New methods: `generation()`, `is_pcie()`, `is_production()`, `weight_bits()`,
+`max_clock_mhz()`, `local_ram_kb()`.
 
 ---
 
@@ -377,11 +389,19 @@ The full technical writeup is in [`whitePaper/outreach/akida/TECHNICAL_BRIEF.md`
 
 ## For BrainChip engineers
 
+We see you shipped `brainchip_devhub` (June 2026) and initiated AKD2500 (Feb 2026).
+Your devhub is still all Python. Your C++ inference package still needs `libakida.so`.
+This repo does neither — it talks to your silicon directly in pure Rust.
+
+We've added AKD2500 and Akida Pico to the chip model (Oct 2026). Device IDs are
+placeholders until you ship silicon. When you do, the driver extends naturally.
+
 Start here:
 1. [`docs/BEYOND_SDK.md`](docs/BEYOND_SDK.md) — the 10 discoveries
 2. [`whitePaper/outreach/akida/TECHNICAL_BRIEF.md`](whitePaper/outreach/akida/TECHNICAL_BRIEF.md) — what the hardware actually does
 3. [`baseCamp/systems/README.md`](baseCamp/systems/README.md) — what more it can do
 4. [`whitePaper/explorations/TANH_CONSTRAINT.md`](whitePaper/explorations/TANH_CONSTRAINT.md) — the one thing to fix in hardware
+5. `crates/akida-chip/src/pcie.rs` — **NEW**: AKD2500 + Pico variants, generation enum
 
 ## For hardware testers (SRAM access)
 
@@ -422,6 +442,13 @@ exception removes AGPL friction on the original code. Code with ecoPrimals linea
 is **not** exception-eligible — it inherits from the commons and stays there. See
 [SCYBORG_EXCEPTION_PROTOCOL.md](https://github.com/ecoPrimals/whitePaper) for
 the full framework.
+
+**Open invitation (Oct 2026)**: This code is free for BrainChip to use under
+the scyBorg license. If BrainChip engineers want to explore a permissive license
+for their use case, reach out directly — human to human, no middlemen, no C-suite
+gate. Kevin Mok / ecoPrimal (ORCID: 0009-0004-2141-0321). The offer has stood
+since the beginning of 2026. [PR #20](https://github.com/Brainchip-Inc/akida_dw_edma/pull/20)
+is still open. We built this on and for Akida hardware; we'd rather work together.
 
 ---
 
